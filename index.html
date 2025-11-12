@@ -2,131 +2,127 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>SCOAP Analyzer — Exact Table Rendering</title>
+  <title>SCOAP Analyzer — Line Fix</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
-
   <style>
-    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 20px; background: #f6f8fa; color:#111; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    h1 { margin: 0 0 8px 0; }
-    .controls { margin: 12px 0 20px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    button { padding:8px 14px; background:#0b74de; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600; }
-    button:disabled { background:#9bb8df; cursor:not-allowed; }
-
-    /* Important output styling */
-    pre#output {
-      font-family: "JetBrains Mono", "Fira Code", "Consolas", "Menlo", "Courier New", monospace;
-      font-size: 13px;
-      line-height: 1.35;
-      background: #0b0f12;
-      color: #e6f3e6;
-      padding: 16px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(2,6,23,0.08);
-      border: 1px solid #13303f;
-
-      white-space: pre;       /* PRESERVE EXACT SPACES & NEWLINES — DO NOT WRAP */
-      overflow-x: auto;       /* scroll horizontally if line is wide */
-      overflow-y: auto;
-      max-height: 70vh;
-      word-break: normal;     /* ensure no forced breaking */
-      hyphens: none;
-      -webkit-font-smoothing: antialiased;
+    body {
+      font-family: Inter, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 20px;
     }
-
-    /* small screens */
-    @media (max-width: 720px) {
-      pre#output { font-size: 12px; padding: 12px; }
+    .container {
+      max-width: 1200px;
+      margin: auto;
+    }
+    h1 { margin-bottom: 0.5em; }
+    .controls {
+      margin: 15px 0;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    button:disabled {
+      background: #999;
+      cursor: not-allowed;
+    }
+    pre#output {
+      font-family: "Courier New", monospace;
+      font-size: 14px;
+      background: #111;
+      color: #0f0;
+      white-space: pre-wrap;     /* ✅ preserve newlines */
+      word-break: break-word;
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+      overflow-y: auto;
+      min-height: 400px;
+      max-width: 100%;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>SCOAP Analyzer</h1>
-    <p>Upload a Verilog <code>.v</code> file and click <strong>Run SCOAP</strong>. Output is shown below preserving exact spacing.</p>
+    <p>Upload your <b>.v</b> file, then click <b>Run SCOAP</b>.</p>
 
     <div class="controls">
       <input id="fileInput" type="file" accept=".v">
       <button id="runButton" disabled>Run SCOAP</button>
-      <button id="reloadButton" disabled>Reload SCOAP.py</button>
+      <button id="reloadButton" disabled>Reload Script</button>
     </div>
 
-    <h2>Output</h2>
+    <h2>Output:</h2>
     <pre id="output">Loading Pyodide...</pre>
   </div>
 
 <script>
 (async () => {
-  const outEl = document.getElementById('output');
-  const fileInput = document.getElementById('fileInput');
-  const runBtn = document.getElementById('runButton');
-  const reloadBtn = document.getElementById('reloadButton');
+  const outputEl = document.getElementById("output");
+  const fileInput = document.getElementById("fileInput");
+  const runBtn = document.getElementById("runButton");
+  const reloadBtn = document.getElementById("reloadButton");
 
-  function setOutputText(text) {
-    // Use textContent to preserve *all* spacing and newlines exactly.
-    outEl.textContent = text;
+  function show(text) {
+    // ✅ Force real line breaks and safe HTML rendering
+    outputEl.innerHTML = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\r?\n/g, "<br>"); // <-- FIX HERE
   }
 
-  setOutputText('Loading Pyodide (may take a few seconds)...');
-  let pyodide = null;
-  try {
-    pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/" });
-  } catch (e) {
-    setOutputText('Failed to load Pyodide: ' + e);
-    console.error(e);
-    return;
-  }
+  show("Loading Pyodide...");
+  let pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/" });
+  show("Pyodide loaded. Loading SCOAP.py...");
 
-  async function loadScoap() {
-    setOutputText('Loading SCOAP.py...');
+  async function loadScript() {
     try {
-      const r = await fetch('SCOAP.py');
-      if (!r.ok) throw new Error('Could not fetch SCOAP.py — ensure it is in the same folder as index.html');
-      const code = await r.text();
-      // write into pyodide FS
-      try { pyodide.FS.writeFile('/SCOAP.py', code); } catch {}
-      pyodide.FS.writeFile('SCOAP.py', code);
-      setOutputText('SCOAP.py loaded. Ready.');
+      const resp = await fetch("SCOAP.py");
+      if (!resp.ok) throw new Error("Missing SCOAP.py in same folder");
+      const code = await resp.text();
+      pyodide.FS.writeFile("SCOAP.py", code);
+      show("SCOAP.py loaded successfully!");
       runBtn.disabled = false;
       reloadBtn.disabled = false;
-      return true;
-    } catch (err) {
-      setOutputText('Error loading SCOAP.py: ' + err);
-      console.error(err);
-      return false;
+    } catch (e) {
+      show("Error loading SCOAP.py: " + e);
     }
   }
 
-  await loadScoap();
+  await loadScript();
 
-  function createCapturer() {
-    let buf = '';
-    const h = { batched: (s) => buf += s };
-    return {
-      start() { pyodide.setStdout(h); pyodide.setStderr(h); buf = ''; },
-      stop() { pyodide.setStdout({ batched: s => console.log(s) }); pyodide.setStderr({ batched: s => console.error(s) }); },
-      get() { return buf; }
-    };
-  }
+  runBtn.addEventListener("click", async () => {
+    if (!fileInput.files.length) {
+      alert("Please select a .v file first.");
+      return;
+    }
 
-  runBtn.addEventListener('click', async () => {
-    if (!fileInput.files.length) { alert('Choose a .v file first'); return; }
-    const file = fileInput.files[0];
-    const text = await file.text();
-    try { pyodide.FS.writeFile('/input.v', text); } catch {}
-    pyodide.FS.writeFile('input.v', text);
+    const vf = fileInput.files[0];
+    const txt = await vf.text();
+    pyodide.FS.writeFile("input.v", txt);
 
-    setOutputText('Running SCOAP...');
+    show("Running SCOAP analysis...");
     runBtn.disabled = true;
     reloadBtn.disabled = true;
 
-    const capt = createCapturer();
-    capt.start();
+    let captured = "";
+    const capture = { batched: s => { captured += s; } };
+    pyodide.setStdout(capture);
+    pyodide.setStderr(capture);
 
-    const py = `
+    const pyCmd = `
 import sys, importlib, traceback
-if '' not in sys.path: sys.path.insert(0,'')
+if '' not in sys.path: sys.path.insert(0, '')
 if 'SCOAP' in sys.modules: del sys.modules['SCOAP']
 try:
     import SCOAP
@@ -138,29 +134,25 @@ except Exception:
 `;
 
     try {
-      await pyodide.runPythonAsync(py);
-      const raw = capt.get();
-      // IMPORTANT: put raw text into textContent of <pre> to preserve spacing exactly
-      if (!raw || !raw.trim()) setOutputText('(no output)');
-      else setOutputText(raw);
+      await pyodide.runPythonAsync(pyCmd);
+      // ✅ Now we explicitly replace \n with <br> in output
+      if (!captured.trim()) show("(no output)");
+      else show(captured);
     } catch (err) {
-      setOutputText('Runtime error: ' + String(err));
-      console.error(err);
+      show("Runtime error: " + err);
     } finally {
-      capt.stop();
+      pyodide.setStdout({ batched: s => console.log(s) });
+      pyodide.setStderr({ batched: s => console.error(s) });
       runBtn.disabled = false;
       reloadBtn.disabled = false;
     }
   });
 
-  reloadBtn.addEventListener('click', async () => {
+  reloadBtn.addEventListener("click", async () => {
     runBtn.disabled = true;
     reloadBtn.disabled = true;
-    await loadScoap();
-    runBtn.disabled = false;
-    reloadBtn.disabled = false;
+    await loadScript();
   });
-
 })();
 </script>
 </body>
