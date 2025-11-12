@@ -1,77 +1,168 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>SCOAP Analyzer</title>
+  <meta charset="utf-8" />
+  <title>SCOAP Analyzer — Pyodide</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="web.css">
+  <!-- Pyodide (use a stable release) -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
 </head>
 <body>
   <div class="container">
     <h1>SCOAP Analyzer</h1>
-    <p>Upload a Verilog (.v) file to compute SCOAP metrics.</p>
+    <p>Upload a Verilog (.v) file and click <strong>Run SCOAP</strong>.</p>
 
-    <input type="file" id="fileInput" accept=".v">
-    <button id="runButton" disabled>Run SCOAP</button>
+    <div class="controls">
+      <input id="fileInput" type="file" accept=".v" />
+      <button id="runButton" disabled>Run SCOAP</button>
+      <button id="reloadScript" disabled>Reload SCOAP Script</button>
+    </div>
 
     <div class="output-container">
       <h2>Output</h2>
-      <pre id="output">Loading Python environment...</pre>
+      <pre id="output">Loading Pyodide...</pre>
     </div>
   </div>
 
-  <script>
-    let pyodide = null;
-    let pyodideReady = false;
+<script>
+(async () => {
+  const outputEl = document.getElementById('output');
+  const runBtn = document.getElementById('runButton');
+  const reloadBtn = document.getElementById('reloadScript');
+  const fileInput = document.getElementById('fileInput');
 
-    async function initPyodide() {
-      const output = document.getElementById("output");
-      output.textContent = "Loading Pyodide...";
-      pyodide = await loadPyodide();
-      output.textContent = "Pyodide loaded. Loading SCOAP script...";
+  outputEl.textContent = "Loading Pyodide (this may take a few seconds)...";
+  let pyodide = null;
+  try {
+    pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/" });
+  } catch (e) {
+    outputEl.textContent = "Failed to load Pyodide: " + e;
+    console.error(e);
+    return;
+  }
 
-      // Load your SCOAP.py file into Pyodide's virtual filesystem
-      const resp = await fetch("SCOAP.py");
+  // helper to load SCOAP.py into the FS
+  async function loadScoapScript() {
+    outputEl.textContent = "Fetching SCOAP.py...";
+    try {
+      const resp = await fetch('SCOAP.py');
+      if (!resp.ok) throw new Error('Could not fetch SCOAP.py — check file exists in repo root.');
       const code = await resp.text();
-      pyodide.FS.writeFile("SCOAP.py", code);
+      // write to pyodide FS root
+      pyodide.FS.writeFile('/SCOAP.py', code);
+      // Also write without leading slash for import path compatibility
+      pyodide.FS.writeFile('SCOAP.py', code);
+      outputEl.textContent = "SCOAP.py loaded into Pyodide filesystem.";
+      reloadBtn.disabled = false;
+      runBtn.disabled = false;
+      return true;
+    } catch (err) {
+      outputEl.textContent = "Error loading SCOAP.py: " + err;
+      console.error(err);
+      return false;
+    }
+  }
 
-      pyodideReady = true;
-      document.getElementById("runButton").disabled = false;
-      output.textContent = "Ready. Upload a file and click 'Run SCOAP'.";
+  // Load SCOAP script initially
+  await loadScoapScript();
+
+  // capture stdout/stderr helper
+  function createCapturer() {
+    let captured = "";
+    const stdoutHandler = {
+      batched: (s) => { captured += s; }
+    };
+    const stderrHandler = {
+      batched: (s) => { captured += s; }
+    };
+    return {
+      start() {
+        pyodide.setStdout(stdoutHandler);
+        pyodide.setStderr(stderrHandler);
+        captured = "";
+      },
+      stop() {
+        // reset to default (console)
+        pyodide.setStdout({ batched: (s) => { console.log(s); }});
+        pyodide.setStderr({ batched: (s) => { console.error(s); }});
+      },
+      get() { return captured; }
+    };
+  }
+
+  // Handler to actually run SCOAP
+  runBtn.addEventListener('click', async () => {
+    if (!pyodide) return;
+    if (!fileInput.files.length) {
+      alert("Please select a .v Verilog file first.");
+      return;
     }
 
-    initPyodide();
+    const vf = fileInput.files[0];
+    const txt = await vf.text();
 
-    document.getElementById("runButton").addEventListener("click", async () => {
-      if (!pyodideReady) return alert("Pyodide is still loading...");
-      const fileInput = document.getElementById("fileInput");
-      const output = document.getElementById("output");
-      if (fileInput.files.length === 0) {
-        alert("Please select a .v file first!");
-        return;
-      }
+    // write input file into Pyodide FS
+    try {
+      pyodide.FS.writeFile('/input.v', txt);
+      pyodide.FS.writeFile('input.v', txt);
+    } catch (err) {
+      outputEl.textContent = "Error writing input.v to Pyodide FS: " + err;
+      console.error(err);
+      return;
+    }
 
-      const file = fileInput.files[0];
-      const text = await file.text();
-      pyodide.FS.writeFile("input.v", text);
-      output.textContent = "Running SCOAP analysis...";
+    outputEl.textContent = "Running SCOAP analysis...";
+    runBtn.disabled = true;
+    reloadBtn.disabled = true;
 
-      try {
-        // Capture Python stdout
-        let captured = "";
-        pyodide.setStdout({
-          batched: (data) => { captured += data; }
-        });
+    const capturer = createCapturer();
+    capturer.start();
 
-        // Run the SCOAP analysis
-        const cmd = `
-import sys
-sys.argv = ['SCOAP.py', 'input.v']
-from SCOAP import main
-main()
-        `;
-        await pyodide.runPythonAsync(cmd);
+    // Python command: ensure fresh import and run main() with args
+    const pyCmd = `
+import sys, importlib, traceback
+# ensure the FS root is in sys.path
+if '' not in sys.path:
+    sys.path.insert(0, '')
+# remove any cached module so edits reload
+if 'SCOAP' in sys.modules:
+    del sys.modules['SCOAP']
+try:
+    import SCOAP
+    importlib.reload(SCOAP)
+    sys.argv = ['SCOAP.py', 'input.v']
+    SCOAP.main()
+except Exception:
+    traceback.print_exc()
+`;
+    try {
+      await pyodide.runPythonAsync(pyCmd);
+      // get captured stdout/stderr
+      const out = capturer.get();
+      outputEl.textContent = out || "SCOAP ran but produced no output.";
+    } catch (err) {
+      // should be captured, but show safe fallback
+      outputEl.textContent = "Unexpected error running Pyodide: " + err;
+      console.error(err);
+    } finally {
+      capturer.stop();
+      runBtn.disabled = false;
+      reloadBtn.disabled = false;
+    }
+  });
 
-        // Show captured output
-        output.textContent = captured || "No output produced.";
-      } catch
+  // Allow reloading SCOAP.py from disk (useful while developing)
+  reloadBtn.addEventListener('click', async () => {
+    runBtn.disabled = true;
+    reloadBtn.disabled = true;
+    const ok = await loadScoapScript();
+    runBtn.disabled = !ok;
+  });
+
+  // initial readiness text
+  outputEl.textContent = "Ready — choose a .v file and click Run SCOAP.";
+})();
+</script>
+</body>
+</html>
