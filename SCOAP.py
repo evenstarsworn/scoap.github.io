@@ -443,7 +443,7 @@ def main():
 
     CC0, CC1, CO, SC0, SC1, SO, fwd_level, bkwd_level = scoap_with_levelization(inputs, outputs, gates, seq_cells)
 
-    print(f"\n✅ SCOAP Results for {inpath}")
+    print(f"\n✅ SCOAP Results for {inpath}                                                                                    ")
     print(f"\n{'Net':<10} {'FwdLev':<8} {'BkwdLev':<8} {'CC0':<8} {'CC1':<8} {'CO':<8} {'SC0':<8} {'SC1':<8} {'SO':<8}")
     
 
