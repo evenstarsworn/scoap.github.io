@@ -9,70 +9,69 @@
 <body>
   <div class="container">
     <h1>SCOAP Analyzer</h1>
-    <p>Upload a Verilog (.v) file to compute SCOAP metrics (CC0, CC1, CO, SC0, SC1, SO).</p>
+    <p>Upload a Verilog (.v) file to compute SCOAP metrics.</p>
 
-    <input type="file" id="fileInput" accept=".v" />
+    <input type="file" id="fileInput" accept=".v">
     <button id="runButton" disabled>Run SCOAP</button>
 
     <div class="output-container">
       <h2>Output</h2>
-      <pre id="output">Upload a file to start...</pre>
+      <pre id="output">Loading Python environment...</pre>
     </div>
   </div>
 
   <script>
-    let pyodideReady = false;
     let pyodide = null;
-    let scoapCode = "";
+    let pyodideReady = false;
 
     async function initPyodide() {
-      document.getElementById("output").textContent = "Loading Python environment...";
+      const output = document.getElementById("output");
+      output.textContent = "Loading Pyodide...";
       pyodide = await loadPyodide();
-      document.getElementById("output").textContent = "Python loaded. Loading SCOAP code...";
+      output.textContent = "Pyodide loaded. Loading SCOAP script...";
+
+      // Load your SCOAP.py file into Pyodide's virtual filesystem
       const resp = await fetch("SCOAP.py");
-      scoapCode = await resp.text();
-      await pyodide.runPythonAsync(scoapCode + "\nprint('SCOAP script loaded successfully!')");
+      const code = await resp.text();
+      pyodide.FS.writeFile("SCOAP.py", code);
+
       pyodideReady = true;
       document.getElementById("runButton").disabled = false;
-      document.getElementById("output").textContent = "Ready. Upload a file and click 'Run SCOAP'.";
+      output.textContent = "Ready. Upload a file and click 'Run SCOAP'.";
     }
 
     initPyodide();
 
     document.getElementById("runButton").addEventListener("click", async () => {
-      if (!pyodideReady) {
-        alert("Please wait — Pyodide is still loading.");
-        return;
-      }
-
+      if (!pyodideReady) return alert("Pyodide is still loading...");
       const fileInput = document.getElementById("fileInput");
+      const output = document.getElementById("output");
       if (fileInput.files.length === 0) {
-        alert("Please select a Verilog (.v) file first!");
+        alert("Please select a .v file first!");
         return;
       }
 
       const file = fileInput.files[0];
       const text = await file.text();
-      const outputElement = document.getElementById("output");
-      outputElement.textContent = "Running SCOAP analysis... Please wait.";
+      pyodide.FS.writeFile("input.v", text);
+      output.textContent = "Running SCOAP analysis...";
 
       try {
-        // Write file into Pyodide virtual FS
-        pyodide.FS.writeFile("input.v", text);
+        // Capture Python stdout
+        let captured = "";
+        pyodide.setStdout({
+          batched: (data) => { captured += data; }
+        });
 
-        // Run the Python main() manually with the file argument
-        const pythonCommand = `
+        // Run the SCOAP analysis
+        const cmd = `
 import sys
 sys.argv = ['SCOAP.py', 'input.v']
 from SCOAP import main
 main()
         `;
-        const result = await pyodide.runPythonAsync(pythonCommand);
-        outputElement.textContent = result || "✅ Done — check printed SCOAP table above.";
-      } catch (err) {
-        outputElement.textContent = "❌ Error running SCOAP:\n" + err;
-      }
-    });
-  </script>
-</body>
-</html>
+        await pyodide.runPythonAsync(cmd);
+
+        // Show captured output
+        output.textContent = captured || "No output produced.";
+      } catch
