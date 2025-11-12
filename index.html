@@ -2,15 +2,64 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>SCOAP Analyzer — Fixed Table Output</title>
+  <title>SCOAP Analyzer — Final Version</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="web.css">
   <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+  <style>
+    body {
+      font-family: Inter, sans-serif;
+      background: #f5f6fa;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .controls {
+      margin-top: 10px;
+      margin-bottom: 20px;
+    }
+    .output-container {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      padding: 15px;
+      overflow-x: auto;
+    }
+    pre.scoap-output {
+      font-family: "Courier New", monospace;
+      font-size: 14px;
+      white-space: pre;          /* ✅ preserves newlines and spacing */
+      overflow-x: auto;
+      overflow-y: auto;
+      background: #111;
+      color: #0f0;
+      padding: 15px;
+      border-radius: 10px;
+      min-height: 400px;
+      width: 100%;
+    }
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      background: #0078ff;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
     <h1>SCOAP Analyzer</h1>
-    <p>Upload a Verilog (.v) file and click <strong>Run SCOAP</strong>.</p>
+    <p>Upload your <strong>.v</strong> file, then click <strong>Run SCOAP</strong>.</p>
 
     <div class="controls">
       <input id="fileInput" type="file" accept=".v" />
@@ -20,9 +69,7 @@
 
     <div class="output-container">
       <h2>Output</h2>
-      <div id="output" class="output-inner">
-        <pre class="placeholder">Loading Pyodide...</pre>
-      </div>
+      <pre id="output" class="scoap-output">Loading Pyodide...</pre>
     </div>
   </div>
 
@@ -34,145 +81,58 @@
   const fileInput = document.getElementById('fileInput');
 
   function showPre(text) {
-    outputEl.innerHTML = '';
-    const pre = document.createElement('pre');
-    pre.className = 'scoap-pre';
-    pre.textContent = text;
-    outputEl.appendChild(pre);
+    outputEl.textContent = text;
   }
 
-  function showHTMLTable(headers, rows) {
-    outputEl.innerHTML = '';
-    const table = document.createElement('table');
-    table.className = 'scoap-table';
-    const thead = document.createElement('thead');
-    const thr = document.createElement('tr');
-    headers.forEach(h => {
-      const th = document.createElement('th');
-      th.textContent = h;
-      thr.appendChild(th);
-    });
-    thead.appendChild(thr);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    rows.forEach(r => {
-      const tr = document.createElement('tr');
-      r.forEach(cell => {
-        const td = document.createElement('td');
-        td.textContent = cell;
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    outputEl.appendChild(table);
-  }
-
-  // ✅ Improved table parser — works for any output spacing
-  function tryParseTable(text) {
-    if (!text) return null;
-    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-    if (lines.length < 2) return null;
-
-    // Normalize spaces and tabs
-    const cleaned = lines.map(l => l.replace(/\t+/g, ' ').replace(/\s{2,}/g, '\t'));
-
-    // Split each line into columns
-    const splitLines = cleaned.map(l => l.split('\t').map(c => c.trim()).filter(c => c.length > 0));
-
-    // Ensure not all lines collapsed into one
-    if (splitLines.length <= 1) return null;
-
-    const headers = splitLines[0];
-    const rows = splitLines.slice(1).map(r => {
-      const row = [...r];
-      while (row.length < headers.length) row.push('');
-      return row;
-    });
-
-    if (headers.length >= 2) return { headers, rows };
-    return null;
-  }
-
-  function writeFileToFS(name, text) {
-    try { pyodide.FS.writeFile('/' + name, text); } catch {}
-    pyodide.FS.writeFile(name, text);
-  }
-
-  outputEl.innerHTML = '<pre class="placeholder">Loading Pyodide (this may take a few seconds)...</pre>';
   let pyodide = null;
-
+  showPre("Loading Pyodide (this may take a few seconds)...");
   try {
     pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/" });
-  } catch (e) {
-    showPre("Failed to load Pyodide: " + e);
-    console.error(e);
+  } catch (err) {
+    showPre("Failed to load Pyodide: " + err);
     return;
   }
 
   async function loadScoapScript() {
-    showPre("Fetching SCOAP.py...");
+    showPre("Loading SCOAP.py...");
     try {
       const resp = await fetch('SCOAP.py');
-      if (!resp.ok) throw new Error('Could not fetch SCOAP.py — ensure it’s in the same folder.');
+      if (!resp.ok) throw new Error('Could not fetch SCOAP.py — make sure it’s in the same folder.');
       const code = await resp.text();
-      writeFileToFS('SCOAP.py', code);
+      pyodide.FS.writeFile('SCOAP.py', code);
       showPre("SCOAP.py loaded successfully.");
-      reloadBtn.disabled = false;
       runBtn.disabled = false;
-      return true;
+      reloadBtn.disabled = false;
     } catch (err) {
       showPre("Error loading SCOAP.py: " + err);
-      console.error(err);
-      return false;
     }
   }
 
   await loadScoapScript();
 
-  function createCapturer() {
-    let captured = "";
-    const handler = { batched: s => { captured += s; } };
-    return {
-      start() {
-        pyodide.setStdout(handler);
-        pyodide.setStderr(handler);
-        captured = "";
-      },
-      stop() {
-        pyodide.setStdout({ batched: s => console.log(s) });
-        pyodide.setStderr({ batched: s => console.error(s) });
-      },
-      get() { return captured; }
-    };
-  }
-
   runBtn.addEventListener('click', async () => {
-    if (!pyodide) return;
     if (!fileInput.files.length) {
-      alert("Please select a .v file first.");
+      alert("Please choose a .v file first.");
       return;
     }
 
     const vf = fileInput.files[0];
     const txt = await vf.text();
-    try { writeFileToFS('input.v', txt); } 
-    catch (err) { showPre("Error writing file: " + err); return; }
+    pyodide.FS.writeFile('input.v', txt);
 
     showPre("Running SCOAP analysis...");
     runBtn.disabled = true;
     reloadBtn.disabled = true;
 
-    const capturer = createCapturer();
-    capturer.start();
+    let outputText = "";
+    const capture = { batched: s => outputText += s };
+    pyodide.setStdout(capture);
+    pyodide.setStderr(capture);
 
     const pyCmd = `
 import sys, importlib, traceback
-if '' not in sys.path:
-    sys.path.insert(0, '')
-if 'SCOAP' in sys.modules:
-    del sys.modules['SCOAP']
+if '' not in sys.path: sys.path.insert(0, '')
+if 'SCOAP' in sys.modules: del sys.modules['SCOAP']
 try:
     import SCOAP
     importlib.reload(SCOAP)
@@ -184,31 +144,23 @@ except Exception:
 
     try {
       await pyodide.runPythonAsync(pyCmd);
-      const out = capturer.get().trim();
-      if (!out) showPre("(no output produced)");
-      else {
-        const parsed = tryParseTable(out);
-        if (parsed) showHTMLTable(parsed.headers, parsed.rows);
-        else showPre(out);
-      }
+      showPre(outputText || "(no output)");
     } catch (err) {
       showPre("Runtime error: " + err);
-      console.error(err);
     } finally {
-      capturer.stop();
       runBtn.disabled = false;
       reloadBtn.disabled = false;
+      pyodide.setStdout({ batched: s => console.log(s) });
+      pyodide.setStderr({ batched: s => console.error(s) });
     }
   });
 
   reloadBtn.addEventListener('click', async () => {
     runBtn.disabled = true;
     reloadBtn.disabled = true;
-    const ok = await loadScoapScript();
-    runBtn.disabled = !ok;
+    await loadScoapScript();
   });
 
-  outputEl.innerHTML = '<pre class="placeholder">Ready — choose a .v file and click Run SCOAP.</pre>';
 })();
 </script>
 </body>
