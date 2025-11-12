@@ -1,0 +1,75 @@
+body {
+  background-color: #0d1117;
+  color: #c9d1d9;
+  font-family: "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  max-width: 800px;
+  margin: 60px auto;
+  background: #161b22;
+  padding: 30px;
+  border-radius: 15px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+
+h1 {
+  text-align: center;
+  color: #58a6ff;
+}
+
+p {
+  text-align: center;
+  color: #8b949e;
+}
+
+input[type="file"] {
+  display: block;
+  margin: 20px auto;
+  color: #58a6ff;
+}
+
+button {
+  display: block;
+  margin: 10px auto;
+  padding: 10px 25px;
+  border: none;
+  border-radius: 8px;
+  background-color: #238636;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+button:hover {
+  background-color: #2ea043;
+}
+
+button:disabled {
+  background-color: #30363d;
+  cursor: not-allowed;
+}
+
+.output-container {
+  margin-top: 25px;
+}
+
+.output-container h2 {
+  border-bottom: 1px solid #30363d;
+  padding-bottom: 5px;
+  color: #58a6ff;
+}
+
+pre {
+  background-color: #0d1117;
+  padding: 15px;
+  border-radius: 8px;
+  color: #dcdcdc;
+  overflow-x: auto;
+  max-height: 500px;
+  border: 1px solid #30363d;
+  white-space: pre-wrap;
+}
