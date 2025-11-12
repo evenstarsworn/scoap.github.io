@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>SCOAP Analyzer — Table Renderer</title>
+  <title>SCOAP Analyzer — Final Version</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="web.css">
   <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
@@ -69,74 +69,48 @@
     outputEl.appendChild(table);
   }
 
-  // Try to parse text into table. Returns {headers, rows} or null.
+  // ✅ Improved universal parser
   function tryParseTable(text) {
     if (!text) return null;
-    const lines = text.split(/\r?\n/).map(l => l.replace(/\t/g, '    ')).filter(l => l.trim().length > 0);
+
+    const lines = text
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => l.length > 0 && !/^[\-=*_]+$/.test(l));
+
     if (lines.length < 2) return null;
 
-    // If output contains explicit pipes, use them first
-    if (lines.some(l => l.includes('|'))) {
-      const tableLines = lines.map(l => l.split('|').map(s => s.trim()).filter((_,i) => !(i===0 && sTrimEmpty(s => true)) ));
-      // remove empty leading/trailing columns if present
-      const normalized = tableLines.map(row => row.filter(c => c !== ''));
-      if (normalized[0].length >= 2) {
-        const headers = normalized[0];
-        const rows = normalized.slice(1).map(r => {
-          // pad rows to headers length
-          const out = headers.map((_,i) => r[i] ?? '');
-          return out;
-        });
-        return { headers, rows };
-      }
-    }
+    // Auto-detect column separator
+    let separator = null;
+    if (lines.some(l => l.includes('|'))) separator = '|';
+    else if (lines.some(l => l.includes(','))) separator = ',';
+    else separator = /\s+/; // any whitespace
 
-    // Remove separator rows lines that are like "----" or "====" or contain mostly dashes
-    const filtered = lines.filter(l => !/^[\s\-=_|:]+$/.test(l));
+    // Split lines
+    const splitLines = lines.map(line =>
+      line.split(separator).map(c => c.trim()).filter(c => c.length > 0)
+    );
 
-    if (filtered.length < 2) return null;
+    const headers = splitLines[0];
+    const rows = splitLines.slice(1).map(r => {
+      const row = [...r];
+      while (row.length < headers.length) row.push('');
+      return row;
+    });
 
-    // Heuristic splitting:
-    // First, try split by two-or-more spaces (common in printed tables).
-    const splitBySpaces = filtered.map(l => l.trim().split(/\s{2,}/).map(s => s.trim()));
-    // If the first row yields >=2 columns and subsequent rows have similar column counts, accept it
-    const colCount = splitBySpaces[0].length;
-    const similar = splitBySpaces.slice(1).every(r => r.length >= Math.max(1, colCount - 1) && r.length <= colCount + 1);
-    if (colCount >= 2 && similar) {
-      const headers = splitBySpaces[0];
-      const rows = splitBySpaces.slice(1).map(r => {
-        // normalize to header length
-        const out = headers.map((_,i) => r[i] ?? '');
-        return out;
-      });
-      return { headers, rows };
-    }
-
-    // Next fallback: try comma separated values
-    const splitByComma = filtered.map(l => l.split(',').map(s => s.trim()));
-    if (splitByComma[0].length >= 2) {
-      const headers = splitByComma[0];
-      const rows = splitByComma.slice(1).map(r => headers.map((_,i) => r[i] ?? ''));
-      return { headers, rows };
-    }
-
+    if (headers.length >= 2) return { headers, rows };
     return null;
   }
 
-  // helper to write files into pyodide FS
+  // Write file into Pyodide FS
   function writeFileToFS(name, text) {
-    try {
-      // Write both with and without leading slash for compatibility
-      pyodide.FS.writeFile('/' + name, text);
-    } catch (e) {
-      // if / fails, try local
-    }
+    try { pyodide.FS.writeFile('/' + name, text); } catch {}
     pyodide.FS.writeFile(name, text);
   }
 
-  // load pyodide
   outputEl.innerHTML = '<pre class="placeholder">Loading Pyodide (this may take a few seconds)...</pre>';
   let pyodide = null;
+
   try {
     pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/" });
   } catch (e) {
@@ -145,16 +119,15 @@
     return;
   }
 
-  // load SCOAP.py
+  // Load SCOAP.py
   async function loadScoapScript() {
     showPre("Fetching SCOAP.py...");
     try {
       const resp = await fetch('SCOAP.py');
-      if (!resp.ok) throw new Error('Could not fetch SCOAP.py — check file exists in repo root.');
+      if (!resp.ok) throw new Error('Could not fetch SCOAP.py — check that it’s in the same folder.');
       const code = await resp.text();
-      // write into FS
       writeFileToFS('SCOAP.py', code);
-      showPre("SCOAP.py loaded into Pyodide filesystem.");
+      showPre("SCOAP.py loaded successfully.");
       reloadBtn.disabled = false;
       runBtn.disabled = false;
       return true;
@@ -167,12 +140,10 @@
 
   await loadScoapScript();
 
-  // stdout/stderr capturer
+  // Capture stdout/stderr
   function createCapturer() {
     let captured = "";
-    const handler = {
-      batched: (s) => { captured += s; }
-    };
+    const handler = { batched: s => { captured += s; } };
     return {
       start() {
         pyodide.setStdout(handler);
@@ -180,9 +151,8 @@
         captured = "";
       },
       stop() {
-        // restore default console handlers
-        pyodide.setStdout({ batched: (s) => { console.log(s); }});
-        pyodide.setStderr({ batched: (s) => { console.error(s); }});
+        pyodide.setStdout({ batched: s => console.log(s) });
+        pyodide.setStderr({ batched: s => console.error(s) });
       },
       get() { return captured; }
     };
@@ -191,20 +161,14 @@
   runBtn.addEventListener('click', async () => {
     if (!pyodide) return;
     if (!fileInput.files.length) {
-      alert("Please select a .v Verilog file first.");
+      alert("Please select a .v file first.");
       return;
     }
 
     const vf = fileInput.files[0];
     const txt = await vf.text();
-
-    try {
-      writeFileToFS('input.v', txt);
-    } catch (err) {
-      showPre("Error writing input.v to Pyodide FS: " + err);
-      console.error(err);
-      return;
-    }
+    try { writeFileToFS('input.v', txt); } 
+    catch (err) { showPre("Error writing file: " + err); return; }
 
     showPre("Running SCOAP analysis...");
     runBtn.disabled = true;
@@ -227,23 +191,18 @@ try:
 except Exception:
     traceback.print_exc()
 `;
+
     try {
       await pyodide.runPythonAsync(pyCmd);
       const out = capturer.get().trim();
-      if (!out) {
-        showPre("(no output produced)");
-      } else {
-        // try to parse table
+      if (!out) showPre("(no output produced)");
+      else {
         const parsed = tryParseTable(out);
-        if (parsed) {
-          showHTMLTable(parsed.headers, parsed.rows);
-        } else {
-          // fallback to preformatted text
-          showPre(out);
-        }
+        if (parsed) showHTMLTable(parsed.headers, parsed.rows);
+        else showPre(out);
       }
     } catch (err) {
-      showPre("Unexpected error running Pyodide: " + err);
+      showPre("Runtime error: " + err);
       console.error(err);
     } finally {
       capturer.stop();
