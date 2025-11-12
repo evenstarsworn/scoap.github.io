@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>SCOAP Analyzer — Final Version</title>
+  <title>SCOAP Analyzer — Fixed Table Output</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="web.css">
   <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
@@ -69,27 +69,20 @@
     outputEl.appendChild(table);
   }
 
-  // ✅ Improved universal parser
+  // ✅ Improved table parser — works for any output spacing
   function tryParseTable(text) {
     if (!text) return null;
-
-    const lines = text
-      .split(/\r?\n/)
-      .map(l => l.trim())
-      .filter(l => l.length > 0 && !/^[\-=*_]+$/.test(l));
-
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
     if (lines.length < 2) return null;
 
-    // Auto-detect column separator
-    let separator = null;
-    if (lines.some(l => l.includes('|'))) separator = '|';
-    else if (lines.some(l => l.includes(','))) separator = ',';
-    else separator = /\s+/; // any whitespace
+    // Normalize spaces and tabs
+    const cleaned = lines.map(l => l.replace(/\t+/g, ' ').replace(/\s{2,}/g, '\t'));
 
-    // Split lines
-    const splitLines = lines.map(line =>
-      line.split(separator).map(c => c.trim()).filter(c => c.length > 0)
-    );
+    // Split each line into columns
+    const splitLines = cleaned.map(l => l.split('\t').map(c => c.trim()).filter(c => c.length > 0));
+
+    // Ensure not all lines collapsed into one
+    if (splitLines.length <= 1) return null;
 
     const headers = splitLines[0];
     const rows = splitLines.slice(1).map(r => {
@@ -102,7 +95,6 @@
     return null;
   }
 
-  // Write file into Pyodide FS
   function writeFileToFS(name, text) {
     try { pyodide.FS.writeFile('/' + name, text); } catch {}
     pyodide.FS.writeFile(name, text);
@@ -119,12 +111,11 @@
     return;
   }
 
-  // Load SCOAP.py
   async function loadScoapScript() {
     showPre("Fetching SCOAP.py...");
     try {
       const resp = await fetch('SCOAP.py');
-      if (!resp.ok) throw new Error('Could not fetch SCOAP.py — check that it’s in the same folder.');
+      if (!resp.ok) throw new Error('Could not fetch SCOAP.py — ensure it’s in the same folder.');
       const code = await resp.text();
       writeFileToFS('SCOAP.py', code);
       showPre("SCOAP.py loaded successfully.");
@@ -140,7 +131,6 @@
 
   await loadScoapScript();
 
-  // Capture stdout/stderr
   function createCapturer() {
     let captured = "";
     const handler = { batched: s => { captured += s; } };
