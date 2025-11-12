@@ -415,7 +415,7 @@ def scoap_with_levelization(inputs, outputs, gates, seq_cells):
     return CC0, CC1, CO, SC0, SC1, SO, fwd_level, bkwd_level
 
 def main():
-    default_filename = "combined_seq.v"
+    default_filename = "seq_ckt.v"
 
     if len(sys.argv) > 1 and sys.argv[1] != '-f':
         inpath = sys.argv[1]
@@ -444,8 +444,8 @@ def main():
     CC0, CC1, CO, SC0, SC1, SO, fwd_level, bkwd_level = scoap_with_levelization(inputs, outputs, gates, seq_cells)
 
     print(f"\n✅ SCOAP Results for {inpath}")
-    print(f"\n{'Net':<10} {'FwdLev':<8} {'BkwdLev':<8} {'CC0':<8} {'CC1':<8} {'CO':<8} {'SC0':<8} {'SC1':<8} {'SO':<8}")
-    
+    print(f"{'Net':<10} {'FwdLev':<8} {'BkwdLev':<8} {'CC0':<8} {'CC1':<8} {'CO':<8} {'SC0':<8} {'SC1':<8} {'SO':<8}")
+    print("-" * 85)
 
     all_nets = sorted(set(list(CC0.keys()) + list(CO.keys())))
 
@@ -468,8 +468,7 @@ def main():
         flevs = f"{flev}" if flev != "" else "-"
         blews = f"{blev}" if blev != "" else "-"
 
-        print(f"\n{n:<10} {flevs:<8} {blews:<8} {c0s:<8} {c1s:<8} {cos:<8} {s0s:<8} {s1s:<8} {sos:<8}")
+        print(f"{n:<10} {flevs:<8} {blews:<8} {c0s:<8} {c1s:<8} {cos:<8} {s0s:<8} {s1s:<8} {sos:<8}")
 
 if __name__ == "__main__":
     main()
-
