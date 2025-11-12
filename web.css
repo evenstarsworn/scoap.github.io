@@ -70,12 +70,12 @@ pre {
   overflow: auto;
   max-height: 600px;
   border: 1px solid #30363d;
-  white-space: pre-wrap;
+  white-space: pre; /* ✅ preserves exact spaces and tabs */
   font-family: "JetBrains Mono", "Fira Code", "Consolas", "Menlo", monospace;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.45;
   letter-spacing: 0.2px;
-  width: 100%;           /* make full width inside container */
-  box-sizing: border-box; /* prevent overflow */
+  width: 100%;
+  box-sizing: border-box;
 }
 
